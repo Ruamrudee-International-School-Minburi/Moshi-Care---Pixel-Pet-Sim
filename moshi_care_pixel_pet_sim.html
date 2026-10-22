@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moshi Care - Pixel Pet Sim</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-wall: #f5dfba;
+            --bg-floor: #d89f6d;
+            --floor-line: #c1895a;
+            
+            /* UI Palette */
+            --ui-bg: #4a2912;
+            --ui-border-outer: #1c0d04;
+            --ui-highlight: #744525;
+            --ui-shadow: #2a1508;
+            --ui-text: #fef0d6;
+            --ui-yellow: #f8c53a;
+            
+            --shop-bg: #f9e5c0;
+            --shop-tab: #e3a96b;
+            --shop-tab-active: #f9e5c0;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            font-family: 'VT323', monospace;
+            user-select: none;
+        }
+
+        /* The master container enforcing strict resolution */
+        #game-container {
+            width: 800px;
+            height: 450px;
+            position: relative;
+            background-color: var(--bg-wall);
+            transform-origin: center center;
+            image-rendering: pixelated; /* CRITICAL: Keeps everything sharp */
+            box-shadow: 0 0 0 4px #111;
+        }
+
+        /* 16-bit Panel Style */
+        .pixel-panel {
+            background-color: var(--ui-bg);
+            border: 4px solid var(--ui-border-outer);
+            box-shadow: inset 4px 4px 0px var(--ui-highlight), inset -4px -4px 0px var(--ui-shadow);
+            color: var(--ui-text);
+            padding: 10px 14px;
+            position: absolute;
+            font-size: 22px;
+            line-height: 1.2;
+            text-shadow: 2px 2px 0px #000;
+        }
+
+        .pixel-panel-light {
+            background-color: var(--shop-bg);
+            border: 4px solid var(--ui-border-outer);
+            box-shadow: inset 4px 4px 0px #fff, inset -4px -4px 0px #d4b589;
+            color: #3e200c;
+            text-shadow: none;
+        }
+
+        /* Segmented Needs Bar */
+        .needs-bar {
+            display: inline-block;
+            letter-spacing: 2px;
+            font-weight: bold;
+        }
+        .bar-bracket { color: var(--ui-text); }
+        .bar-fill-hungry { color: #f26d21; }
+        .bar-fill-happy { color: #e73c3c; }
+        .bar-fill-clean { color: #3498db; }
+        .bar-empty { color: #222; text-shadow: none; }
+
+        /* Chunky Buttons */
+        .pixel-btn {
+            background-color: #437ab8;
+            border: 4px solid #1c0d04;
+            box-shadow: inset 4px 4px 0px #6ba2e0, inset -4px -4px 0px #244673;
+            color: white;
+            font-family: 'VT323', monospace;
+            font-size: 20px;
+            padding: 6px 12px;
+            cursor: pointer;
+            text-shadow: 2px 2px 0px #000;
+            position: absolute;
+            transition: transform 0.1s;
+        }
+        .pixel-btn:active {
+            transform: translateY(4px);
+            box-shadow: inset 4px 4px 0px #244673, inset -4px -4px 0px #6ba2e0;
+        }
+        .btn-green { background-color: #52964e; box-shadow: inset 4px 4px 0px #79cc74, inset -4px -4px 0px #2a5727; }
+        .btn-red { background-color: #a84755; box-shadow: inset 4px 4px 0px #db7282, inset -4px -4px 0px #5c202a; }
+        .btn-blue { background-color: #3498db; box-shadow: inset 4px 4px 0px #5dade2, inset -4px -4px 0px #21618c; }
+
+        /* Environmental styling */
+        .floor {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            height: 220px;
+            background-color: var(--bg-floor);
+            border-top: 4px solid var(--ui-border-outer);
+            background-image: repeating-linear-gradient(
+                90deg,
+                transparent,
+                transparent 76px,
+                var(--floor-line) 76px,
+                var(--floor-line) 80px
+            );
+        }
+        
+        .skirting {
+            position: absolute;
+            bottom: 220px;
+            width: 100%;
+            height: 12px;
+            background-color: #c98e5f;
+            border-top: 4px solid #a36d42;
+            border-bottom: 4px solid var(--ui-border-outer);
+        }
+
+        /* SVG rendering enforcement */
+        svg { shape-rendering: crispEdges; }
+        
+        .interactive:hover { filter: brightness(1.2); cursor: pointer; }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+        .anim-float { animation: float 1.5s infinite steps(2); }
+        
+        @keyframes walk-bob {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-6px); }
+        }
+        .anim-walk { animation: walk-bob 0.25s infinite; }
+        
+        /* Modal */
+        #modal {
+            background: rgba(0,0,0,0.7);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        
+        <!-- Environment Base -->
+        <div class="skirting"></div>
+        <div class="floor">
+            <!-- Horizontal floorboard lines -->
+            <div class="w-full h-[4px] bg-[var(--floor-line)] mt-[40px]"></div>
+            <div class="w-full h-[4px] bg-[var(--floor-line)] mt-[60px]"></div>
+            <div class="w-full h-[4px] bg-[var(--floor-line)] mt-[60px]"></div>
+        </div>
+
+        <!-- Room Objects (Built with divs for structural pixel art) -->
+        <!-- Window -->
+        <div class="absolute top-[30px] left-[320px] w-[140px] h-[100px] border-[4px] border-[#382010] bg-[#6db3e6] shadow-[inset_4px_4px_0_#9dd2f5,inset_-4px_-4px_0_#4385b5]">
+            <!-- Window panes -->
+            <div class="absolute top-0 left-[66px] w-[4px] h-full bg-[#382010]"></div>
+            <div class="absolute top-[48px] left-0 w-full h-[4px] bg-[#382010]"></div>
+            <!-- Curtain -->
+            <div class="absolute top-0 right-0 w-[24px] h-[92px] bg-[#f0f0f0] border-l-[4px] border-[#b0b0b0]"></div>
+        </div>
+
+        <!-- Sofa -->
+        <div class="absolute bottom-[200px] right-[100px]" style="z-index: 250;">
+            <div id="sofa-sprite"></div>
+        </div>
+
+        <!-- Plant -->
+        <div class="absolute bottom-[210px] right-[40px] w-[50px] h-[100px]" style="z-index: 240;">
+            <!-- Leaves (Generated via JS later for crispness, placeholder here) -->
+            <div id="plant-sprite" class="absolute bottom-[30px] left-[-10px]"></div>
+            <!-- Pot -->
+            <div class="absolute bottom-0 left-[8px] w-[34px] h-[34px] bg-[#c7602a] border-[4px] border-[#291307] shadow-[inset_4px_4px_0_#e8834f]"></div>
+        </div>
+
+        <!-- Dog Bed -->
+        <div class="absolute bottom-[160px] left-[60px] interactive" style="z-index: 290;" onclick="interact('bed')">
+            <div id="bed-sprite"></div>
+        </div>
+
+        <!-- Food Bowl -->
+        <div class="absolute bottom-[130px] left-[190px] interactive" style="z-index: 320;" onclick="interact('feed')">
+            <div id="bowl-sprite"></div>
+        </div>
+        
+        <!-- Carrot Toy -->
+        <div class="absolute bottom-[110px] left-[260px] interactive" style="z-index: 340;" onclick="interact('play')">
+            <div id="carrot-sprite"></div>
+        </div>
+
+        <!-- Player Sprite -->
+        <div id="player-container" class="absolute pointer-events-none" style="left: 450px; top: 120px; z-index: 240;">
+            <div id="player-sprite"></div>
+        </div>
+
+        <!-- Moshi (The Dog) -->
+        <div id="moshi-container" class="absolute interactive anim-float" style="bottom: 100px; left: 380px; z-index: 350; transition: filter 0.2s;" onclick="interact('pet')">
+            <div id="moshi-sprite" style="transform: scaleX(1); transform-origin: center;"></div>
+            <div class="text-center text-white mt-1 font-bold" style="text-shadow: 2px 2px 0 #000; font-size: 18px;">Moshi</div>
+        </div>
+
+        <!-- Emotion Bubble -->
+        <div id="emotion" class="absolute bg-white border-[4px] border-[#1c0d04] rounded-full px-2 py-1 text-2xl hidden z-[900] shadow-[4px_4px_0_rgba(0,0,0,0.5)] transition-all">
+            ❤️
+        </div>
+
+        <!-- TOP LEFT: Stats -->
+        <div class="pixel-panel top-[12px] left-[12px] w-[210px] z-[1000]">
+            <div class="text-[var(--ui-yellow)] flex items-center mb-1">
+                <span class="mr-2 text-2xl">🪙</span> $<span id="val-money">3,450</span>
+            </div>
+            <div class="mb-1 text-[18px]">Day <span id="val-day">4</span></div>
+            <div class="mb-1 text-[18px]">Time: <span id="val-time">10:30 AM</span></div>
+            <div class="text-[16px] text-gray-300 mt-2">Job: Vet Assistant 💼</div>
+        </div>
+
+        <!-- TOP RIGHT: Needs -->
+        <div class="pixel-panel top-[12px] right-[12px] w-[220px] z-[1000]">
+            <div class="text-center text-[#8ebdeb] mb-2 text-[18px]">🐾 Moshi's Needs</div>
+            
+            <div class="flex items-center justify-between mb-1 text-[16px]">
+                <span class="w-[80px]">Hungry 🍖</span>
+                <span class="needs-bar" id="bar-hungry"></span>
+            </div>
+            
+            <div class="flex items-center justify-between mb-1 text-[16px]">
+                <span class="w-[80px]">Happy ❤️</span>
+                <span class="needs-bar" id="bar-happy"></span>
+            </div>
+            
+            <div class="flex items-center justify-between text-[16px]">
+                <span class="w-[80px]">Clean 🧼</span>
+                <span class="needs-bar" id="bar-clean"></span>
+            </div>
+        </div>
+
+        <!-- BOTTOM SHOP UI -->
+        <div id="shop-ui" class="absolute bottom-[-4px] left-[50%] translate-x-[-50%] w-[520px] z-[1000] transition-transform duration-300">
+            
+            <!-- Shop Title & Close Button-->
+            <div class="flex justify-between items-end mb-[-4px] px-4">
+                <div class="bg-[var(--ui-bg)] border-[4px] border-[var(--ui-border-outer)] border-b-0 px-8 py-1 text-[var(--ui-text)] text-xl shadow-[inset_4px_4px_0_var(--ui-highlight)] mx-auto font-bold tracking-widest text-shadow">
+                    SHOP / BUY
+                </div>
+            </div>
+
+            <!-- Main Shop Panel -->
+            <div class="bg-[var(--ui-bg)] border-[4px] border-[var(--ui-border-outer)] p-2 shadow-[inset_4px_4px_0_var(--ui-highlight),inset_-4px_-4px_0_var(--ui-shadow)] h-[170px] relative">
+                
+                <!-- Close cross top right -->
+                <div class="absolute top-[4px] right-[4px] bg-[#a84755] border-[4px] border-[#1c0d04] w-[24px] h-[24px] flex items-center justify-center text-white text-sm shadow-[inset_2px_2px_0_#db7282] cursor-pointer active:scale-95" onclick="closeShop()">X</div>
+
+                <!-- Tabs -->
+                <div class="flex gap-[2px] mb-2 pr-8">
+                    <button class="shop-tab bg-[var(--shop-tab-active)] text-[#3e200c] border-[4px] border-[#1c0d04] px-2 py-1 text-[14px] font-bold" onclick="switchTab('houses', this)">🏠 Houses</button>
+                    <button class="shop-tab bg-[var(--shop-tab)] text-[#3e200c] border-[4px] border-[#1c0d04] px-2 py-1 text-[14px] font-bold hover:bg-[var(--shop-tab-active)]" onclick="switchTab('furniture', this)">🛋️ Furniture</button>
+                    <button class="shop-tab bg-[var(--shop-tab)] text-[#3e200c] border-[4px] border-[#1c0d04] px-2 py-1 text-[14px] font-bold hover:bg-[var(--shop-tab-active)]" onclick="switchTab('dogsupplies', this)">🥩 Supplies</button>
+                    <button class="shop-tab bg-[var(--shop-tab)] text-[#3e200c] border-[4px] border-[#1c0d04] px-2 py-1 text-[14px] font-bold hover:bg-[var(--shop-tab-active)]" onclick="switchTab('clothes', this)">👗 Clothes</button>
+                </div>
+
+                <!-- Items Grid -->
+                <div class="pixel-panel-light w-full h-[100px] p-2 flex gap-2 overflow-x-auto" id="shop-content">
+                    <!-- Injected by JS -->
+                </div>
+            </div>
+        </div>
+
+        <!-- ACTION BUTTONS -->
+        <button class="pixel-btn bottom-[20px] left-[20px] z-[1000]" onclick="goToWork()">Go to Work 💼</button>
+        <button class="pixel-btn bg-[#e8834f] bottom-[75px] left-[20px] z-[1000] shadow-[inset_4px_4px_0_#f09b71,inset_-4px_-4px_0_#c7602a]" onclick="openShop()">Shop 🛒</button>
+
+        <button class="pixel-btn btn-blue bottom-[130px] right-[20px] z-[1000]" onclick="giveBath()">Give Bath 🛁</button>
+        <button class="pixel-btn btn-green bottom-[75px] right-[20px] z-[1000]" onclick="takeToPark()">Take to Park 🌳</button>
+        <button class="pixel-btn btn-red bottom-[20px] right-[20px] z-[1000]" onclick="openInventory()">Inventory 🎒</button>
+
+        <!-- MODAL -->
+        <div id="modal" class="absolute inset-0 z-[2000] hidden items-center justify-center pointer-events-auto">
+            <div class="pixel-panel w-[400px] text-center !relative">
+                <h2 id="modal-title" class="text-2xl text-[var(--ui-yellow)] mb-4 font-bold border-b-4 border-[#1c0d04] pb-2">Notice</h2>
+                <p id="modal-msg" class="text-xl mb-6 text-white leading-relaxed">Message</p>
+                <button class="pixel-btn !relative w-[100px] mx-auto block" onclick="closeModal()">OK</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // 1. Pixel Art SVG Generator (Ensures uniform 16-bit blockiness)
+        function createPixelSVG(asciiArray, colorMap, scale = 4) {
+            const width = asciiArray[0].length;
+            const height = asciiArray.length;
+            let rects = '';
+            
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const char = asciiArray[y][x];
+                    if (char !== ' ' && colorMap[char]) {
+                        rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${colorMap[char]}" />`;
+                    }
+                }
+            }
+            
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="${width * scale}" height="${height * scale}" viewBox="0 0 ${width} ${height}">
+                        ${rects}
+                    </svg>`;
+        }
+
+        // 2. Define Sprites mapping
+        const palettes = {
+            dog: { 'B': '#2a2c2e', 'D': '#111111', 'W': '#ffffff', 'G': '#d0d4d8', 'E': '#000000', 'P': '#ff9999', 'N': '#000000', 'T': '#e8b841' },
+            boy: { 'H': '#3a2515', 'S': '#ffdbac', 'A': '#e0b886', 'B': '#2c5e9e', 'D': '#1e4375', 'J': '#365373', 'K': '#243952', 'W': '#ffffff', 'G': '#cccccc', 'E': '#000000' },
+            plant: { 'P': '#4e9a46', 'D': '#356d2e', 'S': '#26541f' },
+            bowl: { 'S': '#a0aab2', 'D': '#291307', 'K': '#8a5c3a', 'L': '#663e21' },
+            carrot: { 'O': '#eb7a23', 'Y': '#f7a45e', 'G': '#5fa641' },
+            sofa: { 'D': '#291307', 'L': '#e8834f', 'M': '#c7602a', 'C': '#d9723c' },
+            bed: { 'D': '#291307', 'M': '#a3795d', 'C': '#e3cdba' }
+        };
+
+        const artMoshi = [
+            "          DDDD          ",
+            "        DDBBBBDD        ",
+            "      DDBBBBBBBBDB      ",
+            "     DDDBBBBBBBBBBDD    ",
+            "     DDDEBBBBBBEBBDD    ",
+            "     DDDDBBBBBBBBDDD    ",
+            "      DDDBDBNNBDBDD     ",
+            "        DBDPPBBD    GG  ",
+            "        GWWTTWWG  GGWWG ",
+            "       GWWWWWWWWGGWWWWG ",
+            "      GWWWWWWWWWWWWWWWG ",
+            "     GWWWWWWWWWWWWWWWWG ",
+            "     GWWWWWWWWWWWWWWWWG ",
+            "     GWWWWWWWWWWWWWWWWG ",
+            "      GWWWWWWWWWWWWWWG  ",
+            "       GWW  WWWW  WWG   ",
+            "        WW  WWWW  WW    ",
+            "        WW  W  W  WW    ",
+            "        DD  D  D  DD    "
+        ];
+
+        const artBoy = [
+            "          HHHHHH        ",
+            "        HHHHHHHHHH      ",
+            "       HHHHHHHHHHHH     ",
+            "       HHHSSSSSSHHH     ",
+            "       HHSSESSESSAH     ",
+            "       HHSSSSSSSSAH     ",
+            "        HSSSASSASAH     ",
+            "          SSSASS        ",
+            "         DBBBBBBD       ",
+            "       DDBBBBBBBBDD     ",
+            "      DDBBBBBBBBBBDD    ",
+            "     DDBBBBBBBBBBBBDD   ",
+            "     DDBBBBBBBBBBBBDD   ",
+            "     SSDBBBBBBBBBBDSS   ",
+            "      SDBBBBBBBBBBDS    ",
+            "       DBBBBBBBBBBD     ",
+            "       DBBBBBBBBBBD     ",
+            "        JJJJJJJJJJ      ",
+            "        KJKKKKKKJK      ",
+            "        JJK    KJJ      ",
+            "        JJK    KJJ      ",
+            "        JJK    KJJ      ",
+            "        JJK    KJJ      ",
+            "        JJK    KJJ      ",
+            "       WWWW    WWWW     ",
+            "      GWWWW    GWWWW    "
+        ];
+
+        const artPlant = [
+            "  P  D  P ",
+            "  PP D PP ",
+            " DPPSPPPD ",
+            "  DPSSPD  ",
+            "   PSSP   ",
+            "   PSSP   "
+        ];
+
+        const artBowl = [
+            "     DDDDDDDDD     ",
+            "   DDSSSSSSSSSDD   ",
+            "  DSSKLLKKKLLKSSD  ",
+            " DSSKKKLKKKLLKKSSD ",
+            " DSSSSSSSSSSSSSSSD ",
+            "  DDDDDDDDDDDDDDD  ",
+            "   DDDDDDDDDDDDD   "
+        ];
+        
+        const artBed = [
+            "    DDDDDDDDDDDDDDDD    ",
+            "  DDMMMMMMMMMMMMMMMMDD  ",
+            " DDMMMMMMMMMMMMMMMMMMDD ",
+            "DDMMMMMMMMMMMMMMMMMMMMDD",
+            "DMMMMDDDDDDDDDDDDDDMMMMD",
+            "DMMMDCCCCCCCCCCCCCCDMMMD",
+            "DMMMDCCCCCCCCCCCCCCDMMMD",
+            "DDMMDDDDDDDDDDDDDDDDMMDD",
+            " DDMMMMMMMMMMMMMMMMMMDD ",
+            "   DDDDDDDDDDDDDDDDDD   "
+        ];
+
+        const artSofa = [
+            "   DDDDDDDDDDDDDDDDDDDDDDDDDD   ",
+            "  DDLLLLLLLLLLLLLLLLLLLLLLLLDD  ",
+            "  DMMMMMMMMMMMMMMMMMMMMMMMMMMD  ",
+            "  DMMMMMMMMMMMMMMMMMMMMMMMMMMD  ",
+            "  DMMMMMMMMMMMMMMMMMMMMMMMMMMD  ",
+            "  DMMMMMMMMMMMMMMMMMMMMMMMMMMD  ",
+            "  DMMMMMMMMMMMMMMMMMMMMMMMMMMD  ",
+            " DDDDDMMMMMMMMMMMMMMMMMMMMDDDDD ",
+            "DDLLLDDMMMMMMMMMMMMMMMMMMDDLLLDD",
+            "DMMMMMDDDDDDDDDDDDDDDDDDDDMMMMMD",
+            "DMMMMMDCCCCCCCCCCCCCCCCCCDMMMMMD",
+            "DMMMMMDCCCCCCCCCCCCCCCCCCDMMMMMD",
+            "DMMMMMDCCCCCCCCCCCCCCCCCCDMMMMMD",
+            "DMMMMMDDDDDDDDDDDDDDDDDDDDMMMMMD",
+            "DMMMMMDMMMMMMMMMMMMMMMMMMDMMMMMD",
+            "DMMMMMDMMMMMMMMMMMMMMMMMMDMMMMMD",
+            " DDDDD DDDDDDDDDDDDDDDDDD DDDDD ",
+            "  DDD                      DDD  "
+        ];
+
+        const artCarrot = [
+            "   GG ",
+            " YGG  ",
+            " YOO  ",
+            " OOO  ",
+            " OOO  ",
+            "  O   "
+        ];
+
+        // Render Sprites to DOM
+        document.getElementById('moshi-sprite').innerHTML = createPixelSVG(artMoshi, palettes.dog, 4);
+        document.getElementById('player-sprite').innerHTML = createPixelSVG(artBoy, palettes.boy, 4);
+        document.getElementById('plant-sprite').innerHTML = createPixelSVG(artPlant, palettes.plant, 4);
+        document.getElementById('bowl-sprite').innerHTML = createPixelSVG(artBowl, palettes.bowl, 4);
+        document.getElementById('carrot-sprite').innerHTML = createPixelSVG(artCarrot, palettes.carrot, 4);
+        document.getElementById('bed-sprite').innerHTML = createPixelSVG(artBed, palettes.bed, 5);
+        document.getElementById('sofa-sprite').innerHTML = createPixelSVG(artSofa, palettes.sofa, 5);
+
+        // 3. Game State
+        let state = {
+            money: 3450,
+            day: 4,
+            timeMins: 10 * 60 + 30,
+            needs: { hungry: 80, happy: 95, clean: 60 },
+            inventory: []
+        };
+
+        // --- NEW: Movement State & Loop ---
+        let playerPos = { x: 450, y: 120, speed: 5, facingLeft: false };
+        let keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false };
+
+        window.addEventListener('keydown', (e) => {
+            if(keys.hasOwnProperty(e.key)) keys[e.key] = true;
+        });
+        window.addEventListener('keyup', (e) => {
+            if(keys.hasOwnProperty(e.key)) keys[e.key] = false;
+        });
+
+        function playerLoop() {
+            let dx = 0; let dy = 0;
+            if (keys.w || keys.ArrowUp) dy -= playerPos.speed;
+            if (keys.s || keys.ArrowDown) dy += playerPos.speed;
+            if (keys.a || keys.ArrowLeft) dx -= playerPos.speed;
+            if (keys.d || keys.ArrowRight) dx += playerPos.speed;
+
+            if (dx !== 0 || dy !== 0) {
+                playerPos.x += dx;
+                playerPos.y += dy;
+
+                // Room Boundaries
+                if (playerPos.x < -30) playerPos.x = -30;
+                if (playerPos.x > 680) playerPos.x = 680;
+                if (playerPos.y < 80) playerPos.y = 80;
+                if (playerPos.y > 330) playerPos.y = 330;
+
+                // Sprite Flipping
+                const sprite = document.getElementById('player-sprite');
+                if (dx < 0 && !playerPos.facingLeft) {
+                    playerPos.facingLeft = true;
+                    sprite.style.transform = 'scaleX(-1)';
+                } else if (dx > 0 && playerPos.facingLeft) {
+                    playerPos.facingLeft = false;
+                    sprite.style.transform = 'scaleX(1)';
+                }
+
+                // Update Position and Depth Sorting
+                const pContainer = document.getElementById('player-container');
+                if (pContainer) {
+                    pContainer.style.left = `${playerPos.x}px`;
+                    pContainer.style.top = `${playerPos.y}px`;
+                    pContainer.style.zIndex = Math.floor(playerPos.y) + 120;
+                }
+            }
+            requestAnimationFrame(playerLoop);
+        }
+        playerLoop(); // Start movement loop
+        // ----------------------------------
+
+        const itemsDB = {
+            houses: [
+                { id: 'h1', name: 'Apartment', price: 5000, icon: '🏢' },
+                { id: 'h2', name: 'House', price: 15000, icon: '🏡' }
+            ],
+            furniture: [
+                { id: 'f1', name: 'Sofa', price: 150, icon: '🛋️' },
+                { id: 'f2', name: 'Rug', price: 80, icon: '🧶' }
+            ],
+            dogsupplies: [
+                { id: 's1', name: 'Comfy Dog Bed', price: 45, icon: '🛏️' },
+                { id: 's2', name: 'Squeaky Toy', price: 10, icon: '🥕' },
+                { id: 's3', name: 'Premium Meat', price: 30, icon: '🥩' }
+            ],
+            clothes: [
+                { id: 'c1', name: 'Smart Suit', price: 120, icon: '🕴️' },
+                { id: 'c2', name: 'Dog Bowtie', price: 8, icon: '🎀' }
+            ]
+        };
+
+        // 4. Scaling Engine (Keeps aspect ratio and pixel perfect crispness)
+        function resize() {
+            const container = document.getElementById('game-container');
+            const scaleX = window.innerWidth / 800;
+            const scaleY = window.innerHeight / 450;
+            const scale = Math.min(scaleX, scaleY) * 0.95; // 95% to leave a tiny border
+            container.style.transform = `scale(${scale})`;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // 5. Core Functions
+        function formatTime(m) {
+            let h = Math.floor(m / 60) % 24;
+            let mins = m % 60;
+            let ampm = h >= 12 ? 'PM' : 'AM';
+            h = h % 12 || 12;
+            return `${h}:${mins.toString().padStart(2, '0')} ${ampm}`;
+        }
+
+        function getSegmentedBar(val, typeClass) {
+            const blocks = Math.max(0, Math.min(10, Math.round(val / 10)));
+            let html = '<span class="bar-bracket">[</span>';
+            for(let i=0; i<10; i++) {
+                if(i < blocks) {
+                    html += `<span class="${typeClass}">I</span>`;
+                } else {
+                    html += `<span class="bar-empty">I</span>`;
+                }
+            }
+            html += '<span class="bar-bracket">]</span>';
+            return html;
+        }
+
+        function updateUI() {
+            // Stats
+            document.getElementById('val-money').innerText = state.money.toLocaleString();
+            document.getElementById('val-day').innerText = state.day;
+            document.getElementById('val-time').innerText = formatTime(state.timeMins);
+            
+            // Needs bounds
+            Object.keys(state.needs).forEach(k => {
+                if(state.needs[k] > 100) state.needs[k] = 100;
+                if(state.needs[k] < 0) state.needs[k] = 0;
+            });
+
+            // Bars
+            document.getElementById('bar-hungry').innerHTML = getSegmentedBar(state.needs.hungry, 'bar-fill-hungry');
+            document.getElementById('bar-happy').innerHTML = getSegmentedBar(state.needs.happy, 'bar-fill-happy');
+            document.getElementById('bar-clean').innerHTML = getSegmentedBar(state.needs.clean, 'bar-fill-clean');
+        }
+
+        function advanceTime(hours) {
+            const oldDay = Math.floor(state.timeMins / (24 * 60));
+            state.timeMins += hours * 60;
+            const newDay = Math.floor(state.timeMins / (24 * 60));
+            if(newDay > oldDay) state.day += (newDay - oldDay);
+            
+            state.needs.hungry -= hours * 8;
+            state.needs.happy -= hours * 5;
+            state.needs.clean -= hours * 3;
+            updateUI();
+        }
+
+        function showModal(title, msg) {
+            document.getElementById('modal-title').innerText = title;
+            document.getElementById('modal-msg').innerText = msg;
+            document.getElementById('modal').classList.remove('hidden');
+            document.getElementById('modal').classList.add('flex');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.add('hidden');
+            document.getElementById('modal').classList.remove('flex');
+        }
+
+        function popEmotion(emoji, targetId) {
+            const target = document.getElementById(targetId);
+            const emo = document.getElementById('emotion');
+            const rect = target.getBoundingClientRect();
+            const gameRect = document.getElementById('game-container').getBoundingClientRect();
+            
+            const scale = gameRect.width / 800; // current active scale
+            const targetX = (rect.left - gameRect.left) / scale;
+            const targetY = (rect.top - gameRect.top) / scale;
+
+            emo.innerText = emoji;
+            emo.style.left = `${targetX + 20}px`;
+            emo.style.top = `${targetY - 30}px`;
+            emo.classList.remove('hidden');
+            
+            // Snappy hop animation
+            target.style.transition = 'transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+            target.style.transform = 'translateY(-20px) scale(1.05)';
+            setTimeout(() => {
+                target.style.transform = 'translateY(0) scale(1)';
+                setTimeout(() => {
+                    emo.classList.add('hidden');
+                }, 600);
+            }, 150);
+        }
+
+        function interact(action) {
+            if(action === 'pet') {
+                state.needs.happy += 15;
+                popEmotion('❤️', 'moshi-sprite');
+            } else if(action === 'feed') {
+                if(state.money >= 5) {
+                    state.money -= 5;
+                    state.needs.hungry += 25;
+                    popEmotion('🍖', 'moshi-sprite');
+                } else {
+                    showModal("Info", "Not enough money for dog food ($5)!");
+                    return;
+                }
+            } else if(action === 'play') {
+                state.needs.happy += 20;
+                state.needs.hungry -= 5;
+                popEmotion('🎾', 'moshi-sprite');
+            } else if(action === 'bed') {
+                state.needs.happy += 5;
+                popEmotion('💤', 'moshi-sprite');
+            }
+            advanceTime(0.5);
+        }
+
+        function goToWork() {
+            state.money += 120;
+            showModal("Work Finished", "You worked hard as a Vet Assistant for 8 hours and earned $120!");
+            advanceTime(8);
+        }
+
+        function takeToPark() {
+            state.needs.happy += 40;
+            state.needs.clean -= 30;
+            state.needs.hungry -= 15;
+            showModal("Park Visit", "Moshi loved the park! He got very dirty though.");
+            advanceTime(2);
+        }
+
+        function giveBath() {
+            state.needs.clean += 50;
+            state.needs.happy -= 10; // Dogs usually don't love baths!
+            popEmotion('🧼', 'moshi-sprite');
+            showModal("Bath Time", "Moshi is squeaky clean! He shook water everywhere though.");
+            advanceTime(1);
+        }
+
+        function openInventory() {
+            if(state.inventory.length === 0) showModal("Inventory", "Empty!");
+            else showModal("Inventory", "You own:\n" + state.inventory.map(i=>i.name).join(", "));
+        }
+
+        function switchTab(cat, btn) {
+            document.querySelectorAll('.shop-tab').forEach(t => {
+                t.classList.remove('bg-[var(--shop-tab-active)]');
+                t.classList.add('bg-[var(--shop-tab)]');
+            });
+            btn.classList.add('bg-[var(--shop-tab-active)]');
+            btn.classList.remove('bg-[var(--shop-tab)]');
+            
+            const content = document.getElementById('shop-content');
+            content.innerHTML = '';
+            
+            itemsDB[cat].forEach(item => {
+                const owned = state.inventory.find(i => i.id === item.id);
+                const div = document.createElement('div');
+                div.className = `min-w-[100px] h-full bg-[#fdf5e6] border-[4px] border-[#3e200c] flex flex-col items-center justify-center p-1 text-center shadow-[inset_2px_2px_0_#fff] ${owned ? 'opacity-50' : 'cursor-pointer hover:bg-[#fff]'}`;
+                
+                div.innerHTML = `
+                    <div class="text-3xl mb-1">${item.icon}</div>
+                    <div class="text-[14px] font-bold leading-none mb-1">${item.name}</div>
+                    <div class="text-[14px] text-green-700">$${item.price}</div>
+                    ${owned ? '<div class="text-[12px] text-red-600">OWNED</div>' : ''}
+                `;
+                
+                if(!owned) div.onclick = () => buy(item, cat, btn);
+                content.appendChild(div);
+            });
+        }
+
+        function buy(item, cat, btn) {
+            if(state.money >= item.price) {
+                state.money -= item.price;
+                state.inventory.push(item);
+                showModal("Purchased!", `You bought ${item.name}!`);
+                updateUI();
+                switchTab(cat, btn); // refresh view
+            } else {
+                showModal("Oops", "Not enough money!");
+            }
+        }
+
+        function closeShop() {
+            document.getElementById('shop-ui').style.transform = 'translate(-50%, 120%)';
+        }
+
+        function openShop() {
+            document.getElementById('shop-ui').style.transform = 'translate(-50%, 0)';
+        }
+
+        // Moshi AI & Game Loop
+        let moshiAI = {
+            x: 380,
+            y: 100,
+            targetX: 380,
+            targetY: 100,
+            state: 'IDLE', // IDLE or WALK
+            timer: 100, // frames until next action
+            speed: 1.5,
+            bounds: { minX: 40, maxX: 660, minY: 60, maxY: 140 } // Keeps him lower on screen
+        };
+
+        function updateMoshiAI() {
+            const container = document.getElementById('moshi-container');
+            const sprite = document.getElementById('moshi-sprite');
+
+            if (moshiAI.state === 'IDLE') {
+                moshiAI.timer--;
+                if (moshiAI.timer <= 0) {
+                    // Pick a random spot within bounds
+                    moshiAI.targetX = moshiAI.bounds.minX + Math.random() * (moshiAI.bounds.maxX - moshiAI.bounds.minX);
+                    moshiAI.targetY = moshiAI.bounds.minY + Math.random() * (moshiAI.bounds.maxY - moshiAI.bounds.minY);
+                    moshiAI.state = 'WALK';
+                    
+                    // Switch to walking animation
+                    container.classList.remove('anim-float');
+                    container.classList.add('anim-walk');
+                }
+            } else if (moshiAI.state === 'WALK') {
+                const dx = moshiAI.targetX - moshiAI.x;
+                const dy = moshiAI.targetY - moshiAI.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+
+                if (dist < moshiAI.speed) {
+                    // Reached target
+                    moshiAI.x = moshiAI.targetX;
+                    moshiAI.y = moshiAI.targetY;
+                    moshiAI.state = 'IDLE';
+                    moshiAI.timer = 60 + Math.random() * 180; // Rest for 1 to 4 seconds
+                    
+                    // Back to idle breathing animation
+                    container.classList.remove('anim-walk');
+                    container.classList.add('anim-float');
+                } else {
+                    // Move towards target
+                    moshiAI.x += (dx / dist) * moshiAI.speed;
+                    moshiAI.y += (dy / dist) * moshiAI.speed;
+
+                    // Flip sprite based on direction (Moshi faces left by default)
+                    if (dx > 0) {
+                        sprite.style.transform = 'scaleX(-1)';
+                    } else if (dx < 0) {
+                        sprite.style.transform = 'scaleX(1)';
+                    }
+                }
+            }
+
+            // Apply new coordinates
+            container.style.left = `${moshiAI.x}px`;
+            container.style.bottom = `${moshiAI.y}px`;
+            container.style.zIndex = Math.floor(450 - moshiAI.y);
+        }
+
+        function moshiLoop() {
+            updateMoshiAI();
+            requestAnimationFrame(moshiLoop);
+        }
+
+        // Init
+        updateUI();
+        switchTab('dogsupplies', document.querySelectorAll('.shop-tab')[2]);
+        moshiLoop(); // Start the animation frame loop
+
+    </script>
+</body>
+</html>
